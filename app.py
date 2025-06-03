@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 @st.cache_data
 def load_data():
-    df = pd.read_excel('data/Enterococcus_faecium_groupes_antibiotiques.xlsx')
+    df = pd.read_excel('Enterococcus_faecium_groupes_antibiotiques.xlsx')
     return df
 
 def calculate_alerts(df, phenotype='ERV', window_size=8, z_score=1.96):
