@@ -183,6 +183,14 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
 
     st.plotly_chart(fig, use_container_width=True)
 
+
+
+    fig.add_trace(go.Scatter(
+        x=df_vanco_resistance['Numéro semaine'],
+        y=df_vanco_resistance['lower_bound'],
+        mode='lines',
+        name)
+    ))
 def plot_vanco_resistance(df_vanco_resistance, weeks_range):
     df_vanco_resistance = df_vanco_resistance[
         (df_vanco_resistance['Numéro semaine'] >= weeks_range[0]) & 
@@ -213,5 +221,33 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         x=df_vanco_resistance['Numéro semaine'],
         y=df_vanco_resistance['lower_bound'],
         mode='lines',
-        name)
+        name='IC bas',
+        line=dict(color='violet', width=1, dash='dot')
     ))
+
+    fig.add_trace(go.Scatter(
+        x=df_vanco_resistance['Numéro semaine'],
+        y=df_vanco_resistance['upper_bound'],
+        mode='lines',
+        name='IC haut',
+        line=dict(color='violet', width=1, dash='dot')
+    ))
+
+    alerts = df_vanco_resistance[df_vanco_resistance['alert']]
+    fig.add_trace(go.Scatter(
+        x=alerts['Numéro semaine'],
+        y=alerts['percent_R'],
+        mode='markers',
+        marker=dict(color='darkred', size=12),
+        name='Alerte',
+        hovertemplate='Alerte!<br>Semaine %{x}<br>% Résistance %{y:.2f}%'
+    ))
+
+    fig.update_layout(
+        title="Évolution hebdomadaire du % de résistance à la Vancomycine",
+        xaxis_title="Numéro semaine",
+        yaxis_title="% Résistance",
+        hovermode="closest"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
