@@ -45,6 +45,23 @@ def calculate_alerts(df, phenotype='ERV', window_size=8, z_score=1.96):
     df_alerts = df_merged.groupby('UF').apply(rolling_alerts).reset_index(drop=True)
     return df_alerts
 
+def calculate_vanco_resistance(df, window_size=8, z_score=1.96):
+    df_vanco = df[df['Vancomycine'].isin(['R', 'S'])]
+
+    counts = df_vanco.groupby('Numéro semaine')['Vancomycine'].value_counts().unstack(fill_value=0).reset_index()
+    counts['total_tested'] = counts['R'] + counts['S']
+    counts['percent_R'] = counts['R'] / counts['total_tested'] * 100
+
+    counts = counts.sort_values('Numéro semaine')
+    counts['moving_avg'] = counts['percent_R'].rolling(window=window_size, center=True).mean()
+    counts['moving_std'] = counts['percent_R'].rolling(window=window_size, center=True).std()
+    counts['lower_bound'] = counts['moving_avg'] - z_score * (counts['moving_std'] / np.sqrt(window_size))
+    counts['upper_bound'] = counts['moving_avg'] + z_score * (counts['moving_std'] / np.sqrt(window_size))
+
+    counts['alert'] = (counts['percent_R'] < counts['lower_bound']) | (counts['percent_R'] > counts['upper_bound'])
+
+    return counts
+
 def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
     df_erv = df_erv[(df_erv['Numéro semaine'] >= weeks_range[0]) & (df_erv['Numéro semaine'] <= weeks_range[1])]
     df_wild = df_wild[(df_wild['Numéro semaine'] >= weeks_range[0]) & (df_wild['Numéro semaine'] <= weeks_range[1])]
@@ -166,43 +183,18 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
 
     st.plotly_chart(fig, use_container_width=True)
 
-def main():
-    st.title("Dashboard Résistance Enterococcus faecium")
-
-    df = load_data()
-
-    df_alerts_erv = calculate_alerts(df, phenotype='ERV')
-    df_alerts_wild = calculate_alerts(df, phenotype='Wild')
-
-    weeks = sorted(df['Numéro semaine'].unique())
-    min_week, max_week = min(weeks), max(weeks)
-    selected_weeks = st.sidebar.slider("Choisir plage de semaines", min_week, max_week, (min_week, max_week))
-
-    phenotype_choice = st.sidebar.selectbox(
-        "Choisir phénotype à afficher",
-        options=["Les deux", "Seulement ERV", "Seulement Wild type"],
-        index=0
-    )
-
-    plot_phenotypes(df_alerts_erv, df_alerts_wild, selected_weeks, phenotype_choice)
-
-    st.header("Alertes détectées")
-    combined_alerts = pd.concat([
-        df_alerts_erv[df_alerts_erv['alert']][['Numéro semaine', 'UF', 'percent_ERV']].assign(Phénotype='ERV'),
-        df_alerts_wild[df_alerts_wild['alert']][['Numéro semaine', 'UF', 'percent_wild']].assign(Phénotype='Wild')
-    ])
-
-    combined_alerts = combined_alerts.rename(columns={'percent_ERV': '% ERV', 'percent_wild': '% Wild type'})
-    combined_alerts = combined_alerts.sort_values(['Numéro semaine', 'UF'])
-
-    combined_alerts = combined_alerts[
-        (combined_alerts['Numéro semaine'] >= selected_weeks[0]) & (combined_alerts['Numéro semaine'] <= selected_weeks[1])
+def plot_vanco_resistance(df_vanco_resistance, weeks_range):
+    df_vanco_resistance = df_vanco_resistance[
+        (df_vanco_resistance['Numéro semaine'] >= weeks_range[0]) & 
+        (df_vanco_resistance['Numéro semaine'] <= weeks_range[1])
     ]
 
-    if combined_alerts.empty:
-        st.write("Aucune alerte détectée pour cette plage de semaines.")
-    else:
-        st.dataframe(combined_alerts)
+    fig = go.Figure()
 
-if __name__ == "__main__":
-    main()
+    fig.add_trace(go.Scatter(
+        x=df_vanco_resistance['Numéro semaine'],
+        y=df_vanco_resistance['percent_R'],
+        mode='lines+markers',
+        name='% Résistance Vancomycine',
+        line=dict(color='purple', width=3),
+        marker=dict(size=8
