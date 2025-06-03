@@ -197,4 +197,20 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         mode='lines+markers',
         name='% Résistance Vancomycine',
         line=dict(color='purple', width=3),
-        marker=dict(size=8
+        marker=dict(size=8),
+        hovertemplate='Semaine %{x}<br>% Résistance %{y:.2f}%'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df_vanco_resistance['Numéro semaine'],
+        y=df_vanco_resistance['moving_avg'],
+        mode='lines',
+        name='Moyenne mobile',
+        line=dict(color='purple', width=2, dash='dash')
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df_vanco_resistance['Numéro semaine'],
+        y=df_vanco_resistance['lower_bound'],
+        mode='lines',
+        name
