@@ -65,6 +65,8 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_erv_weekly['percent_ERV'],
             mode='lines+markers',
             name='% ERV',
+            line=dict(color='blue', width=3),
+            marker=dict(size=8),
             hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%'
         ))
 
@@ -73,7 +75,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_erv_weekly['moving_avg'],
             mode='lines',
             name='Moyenne mobile ERV',
-            line=dict(dash='dash')
+            line=dict(color='blue', width=2, dash='dash')
         ))
 
         fig.add_trace(go.Scatter(
@@ -81,7 +83,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_erv_weekly['lower_bound'],
             mode='lines',
             name='IC bas ERV',
-            line=dict(color='gray', dash='dot')
+            line=dict(color='lightblue', width=1, dash='dot')
         ))
 
         fig.add_trace(go.Scatter(
@@ -89,7 +91,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_erv_weekly['upper_bound'],
             mode='lines',
             name='IC haut ERV',
-            line=dict(color='gray', dash='dot')
+            line=dict(color='lightblue', width=1, dash='dot')
         ))
 
         alerts_erv = df_erv_weekly[df_erv_weekly['alert']]
@@ -97,7 +99,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=alerts_erv['Numéro semaine'],
             y=alerts_erv['percent_ERV'],
             mode='markers',
-            marker=dict(color='darkred', size=10),
+            marker=dict(color='darkred', size=12),
             name='Alerte ERV',
             hovertemplate='Alerte ERV!<br>Semaine %{x}<br>% ERV %{y:.2f}%'
         ))
@@ -116,6 +118,8 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_wild_weekly['percent_wild'],
             mode='lines+markers',
             name='% Wild type',
+            line=dict(color='green', width=3),
+            marker=dict(size=8),
             hovertemplate='Semaine %{x}<br>% Wild type %{y:.2f}%'
         ))
 
@@ -124,7 +128,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_wild_weekly['moving_avg'],
             mode='lines',
             name='Moyenne mobile Wild',
-            line=dict(dash='dash')
+            line=dict(color='green', width=2, dash='dash')
         ))
 
         fig.add_trace(go.Scatter(
@@ -132,7 +136,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_wild_weekly['lower_bound'],
             mode='lines',
             name='IC bas Wild',
-            line=dict(color='gray', dash='dot')
+            line=dict(color='lightgreen', width=1, dash='dot')
         ))
 
         fig.add_trace(go.Scatter(
@@ -140,7 +144,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=df_wild_weekly['upper_bound'],
             mode='lines',
             name='IC haut Wild',
-            line=dict(color='gray', dash='dot')
+            line=dict(color='lightgreen', width=1, dash='dot')
         ))
 
         alerts_wild = df_wild_weekly[df_wild_weekly['alert']]
@@ -148,7 +152,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=alerts_wild['Numéro semaine'],
             y=alerts_wild['percent_wild'],
             mode='markers',
-            marker=dict(color='darkblue', size=10),
+            marker=dict(color='darkred', size=12),
             name='Alerte Wild type',
             hovertemplate='Alerte Wild type!<br>Semaine %{x}<br>% Wild type %{y:.2f}%'
         ))
