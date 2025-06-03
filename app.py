@@ -54,6 +54,9 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
     if phenotype_choice in ["Les deux", "Seulement ERV"]:
         df_erv_weekly = df_erv.groupby('Numéro semaine').agg({
             'percent_ERV': 'mean',
+            'moving_avg': 'mean',
+            'lower_bound': 'mean',
+            'upper_bound': 'mean',
             'alert': 'max'
         }).reset_index()
 
@@ -63,6 +66,30 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             mode='lines+markers',
             name='% ERV',
             hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_erv_weekly['Numéro semaine'],
+            y=df_erv_weekly['moving_avg'],
+            mode='lines',
+            name='Moyenne mobile ERV',
+            line=dict(dash='dash')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_erv_weekly['Numéro semaine'],
+            y=df_erv_weekly['lower_bound'],
+            mode='lines',
+            name='IC bas ERV',
+            line=dict(color='gray', dash='dot')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_erv_weekly['Numéro semaine'],
+            y=df_erv_weekly['upper_bound'],
+            mode='lines',
+            name='IC haut ERV',
+            line=dict(color='gray', dash='dot')
         ))
 
         alerts_erv = df_erv_weekly[df_erv_weekly['alert']]
@@ -78,6 +105,9 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
     if phenotype_choice in ["Les deux", "Seulement Wild type"]:
         df_wild_weekly = df_wild.groupby('Numéro semaine').agg({
             'percent_wild': 'mean',
+            'moving_avg': 'mean',
+            'lower_bound': 'mean',
+            'upper_bound': 'mean',
             'alert': 'max'
         }).reset_index()
 
@@ -87,6 +117,30 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             mode='lines+markers',
             name='% Wild type',
             hovertemplate='Semaine %{x}<br>% Wild type %{y:.2f}%'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_wild_weekly['Numéro semaine'],
+            y=df_wild_weekly['moving_avg'],
+            mode='lines',
+            name='Moyenne mobile Wild',
+            line=dict(dash='dash')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_wild_weekly['Numéro semaine'],
+            y=df_wild_weekly['lower_bound'],
+            mode='lines',
+            name='IC bas Wild',
+            line=dict(color='gray', dash='dot')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_wild_weekly['Numéro semaine'],
+            y=df_wild_weekly['upper_bound'],
+            mode='lines',
+            name='IC haut Wild',
+            line=dict(color='gray', dash='dot')
         ))
 
         alerts_wild = df_wild_weekly[df_wild_weekly['alert']]
@@ -100,7 +154,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
         ))
 
     fig.update_layout(
-        title="Évolution hebdomadaire des % de phénotypes",
+        title="Évolution hebdomadaire des % de phénotypes avec moyenne mobile et IC",
         xaxis_title="Numéro semaine",
         yaxis_title="% phénotypes",
         hovermode="closest"
