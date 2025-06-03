@@ -183,15 +183,6 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-
-   fig.add_trace(go.Scatter(
-    x=df_vanco_resistance['Numéro semaine'],
-    y=df_vanco_resistance['lower_bound'],
-    mode='lines',
-    name='IC bas'
-))
-
 def plot_vanco_resistance(df_vanco_resistance, weeks_range):
     df_vanco_resistance = df_vanco_resistance[
         (df_vanco_resistance['Numéro semaine'] >= weeks_range[0]) & 
@@ -252,3 +243,49 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+def main():
+    st.title("Dashboard Résistance Enterococcus faecium")
+
+    df = load_data()
+
+    df_alerts_erv = calculate_alerts(df, phenotype='ERV')
+    df_alerts_wild = calculate_alerts(df, phenotype='Wild')
+
+    df_vanco_resistance = calculate_vanco_resistance(df)
+
+    weeks = sorted(df['Numéro semaine'].unique())
+    min_week, max_week = min(weeks), max(weeks)
+    selected_weeks = st.sidebar.slider("Choisir plage de semaines", min_week, max_week, (min_week, max_week))
+
+    phenotype_choice = st.sidebar.selectbox(
+        "Choisir phénotype à afficher",
+        options=["Les deux", "Seulement ERV", "Seulement Wild type"],
+        index=0
+    )
+
+    plot_phenotypes(df_alerts_erv, df_alerts_wild, selected_weeks, phenotype_choice)
+
+    st.header("Alertes détectées")
+    combined_alerts = pd.concat([
+        df_alerts_erv[df_alerts_erv['alert']][['Numéro semaine', 'UF', 'percent_ERV']].assign(Phénotype='ERV'),
+        df_alerts_wild[df_alerts_wild['alert']][['Numéro semaine', 'UF', 'percent_wild']].assign(Phénotype='Wild')
+    ])
+
+    combined_alerts = combined_alerts.rename(columns={'percent_ERV': '% ERV', 'percent_wild': '% Wild type'})
+    combined_alerts = combined_alerts.sort_values(['Numéro semaine', 'UF'])
+
+    combined_alerts = combined_alerts[
+        (combined_alerts['Numéro semaine'] >= selected_weeks[0]) & (combined_alerts['Numéro semaine'] <= selected_weeks[1])
+    ]
+
+    if combined_alerts.empty:
+        st.write("Aucune alerte détectée pour cette plage de semaines.")
+    else:
+        st.dataframe(combined_alerts)
+
+    st.header("Résistance Vancomycine")
+    plot_vanco_resistance(df_vanco_resistance, selected_weeks)
+
+if __name__ == "__main__":
+    main()
