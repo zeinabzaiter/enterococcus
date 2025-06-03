@@ -185,12 +185,13 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
 
 
 
-    fig.add_trace(go.Scatter(
-        x=df_vanco_resistance['Numéro semaine'],
-        y=df_vanco_resistance['lower_bound'],
-        mode='lines',
-        name
-    ))
+   fig.add_trace(go.Scatter(
+    x=df_vanco_resistance['Numéro semaine'],
+    y=df_vanco_resistance['lower_bound'],
+    mode='lines',
+    name='IC bas'
+))
+
 def plot_vanco_resistance(df_vanco_resistance, weeks_range):
     df_vanco_resistance = df_vanco_resistance[
         (df_vanco_resistance['Numéro semaine'] >= weeks_range[0]) & 
