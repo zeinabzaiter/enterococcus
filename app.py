@@ -31,9 +31,7 @@ def calculate_alerts(df, phenotype='ERV', window_size=8, z_score=1.96):
     total_tested = df_tested.groupby(['Numéro semaine', 'UF']).size().reset_index(name='total_tested')
 
     df_merged = pd.merge(pheno_counts, total_tested, on=['Numéro semaine', 'UF'], how='left')
-
     df_merged[col_percent] = df_merged['nb_pheno'] / df_merged['total_tested'] * 100
-
     df_merged = df_merged.sort_values(['UF', 'Numéro semaine'])
 
     def rolling_alerts(group):
@@ -67,7 +65,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_erv_weekly['Numéro semaine'],
             y=df_erv_weekly['percent_ERV'],
             mode='lines+markers',
-            name='% ERV',
+            name='<b>% ERV</b>',
             line=dict(color='blue', width=3),
             marker=dict(size=8),
             hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%'
@@ -77,7 +75,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_erv_weekly['Numéro semaine'],
             y=df_erv_weekly['moving_avg'],
             mode='lines',
-            name='Moyenne mobile ERV',
+            name='<b>Moyenne mobile ERV</b>',
             line=dict(color='blue', width=2, dash='dash')
         ))
 
@@ -85,7 +83,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_erv_weekly['Numéro semaine'],
             y=df_erv_weekly['lower_bound'],
             mode='lines',
-            name='IC bas ERV',
+            name='<b>IC bas ERV</b>',
             line=dict(color='lightblue', width=1, dash='dot')
         ))
 
@@ -93,7 +91,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_erv_weekly['Numéro semaine'],
             y=df_erv_weekly['upper_bound'],
             mode='lines',
-            name='IC haut ERV',
+            name='<b>IC haut ERV</b>',
             line=dict(color='lightblue', width=1, dash='dot')
         ))
 
@@ -103,7 +101,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=alerts_erv['percent_ERV'],
             mode='markers',
             marker=dict(color='darkred', size=12),
-            name='Alerte ERV',
+            name='<b>Alerte ERV</b>',
             hovertemplate='Alerte ERV!<br>Semaine %{x}<br>% ERV %{y:.2f}%'
         ))
 
@@ -120,7 +118,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_wild_weekly['Numéro semaine'],
             y=df_wild_weekly['percent_wild'],
             mode='lines+markers',
-            name='% Wild type',
+            name='<b>% Wild type</b>',
             line=dict(color='green', width=3),
             marker=dict(size=8),
             hovertemplate='Semaine %{x}<br>% Wild type %{y:.2f}%'
@@ -130,7 +128,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_wild_weekly['Numéro semaine'],
             y=df_wild_weekly['moving_avg'],
             mode='lines',
-            name='Moyenne mobile Wild',
+            name='<b>Moyenne mobile Wild</b>',
             line=dict(color='green', width=2, dash='dash')
         ))
 
@@ -138,7 +136,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_wild_weekly['Numéro semaine'],
             y=df_wild_weekly['lower_bound'],
             mode='lines',
-            name='IC bas Wild',
+            name='<b>IC bas Wild</b>',
             line=dict(color='lightgreen', width=1, dash='dot')
         ))
 
@@ -146,7 +144,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             x=df_wild_weekly['Numéro semaine'],
             y=df_wild_weekly['upper_bound'],
             mode='lines',
-            name='IC haut Wild',
+            name='<b>IC haut Wild</b>',
             line=dict(color='lightgreen', width=1, dash='dot')
         ))
 
@@ -156,14 +154,27 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             y=alerts_wild['percent_wild'],
             mode='markers',
             marker=dict(color='darkred', size=12),
-            name='Alerte Wild type',
+            name='<b>Alerte Wild type</b>',
             hovertemplate='Alerte Wild type!<br>Semaine %{x}<br>% Wild type %{y:.2f}%'
         ))
 
+    # Mise en forme très visible : titre en gros, axes et légende en gras
     fig.update_layout(
-        title="Évolution hebdomadaire des % de phénotypes avec moyenne mobile et IC",
-        xaxis_title="Numéro semaine",
-        yaxis_title="% phénotypes",
+        title=dict(
+            text="Évolution hebdomadaire des % de phénotypes avec moyenne mobile et IC",
+            font=dict(size=26, family="Arial Black")
+        ),
+        legend=dict(
+            font=dict(size=20, family="Arial Black")
+        ),
+        xaxis=dict(
+            title=dict(text="Numéro semaine", font=dict(size=22, family="Arial Black")),
+            tickfont=dict(size=18, family="Arial Black")
+        ),
+        yaxis=dict(
+            title=dict(text="% phénotypes", font=dict(size=22, family="Arial Black")),
+            tickfont=dict(size=18, family="Arial Black")
+        ),
         hovermode="closest"
     )
 
@@ -181,7 +192,7 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         x=df_vanco_resistance['Numéro semaine'],
         y=df_vanco_resistance['percent_R'],
         mode='lines+markers',
-        name='% Résistance Vancomycine',
+        name='<b>% Résistance Vancomycine</b>',
         line=dict(color='purple', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% Résistance %{y:.2f}%'
@@ -191,7 +202,7 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         x=df_vanco_resistance['Numéro semaine'],
         y=df_vanco_resistance['moving_avg'],
         mode='lines',
-        name='Moyenne mobile',
+        name='<b>Moyenne mobile</b>',
         line=dict(color='purple', width=2, dash='dash')
     ))
 
@@ -199,7 +210,7 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         x=df_vanco_resistance['Numéro semaine'],
         y=df_vanco_resistance['lower_bound'],
         mode='lines',
-        name='IC bas',
+        name='<b>IC bas</b>',
         line=dict(color='violet', width=1, dash='dot')
     ))
 
@@ -207,7 +218,7 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         x=df_vanco_resistance['Numéro semaine'],
         y=df_vanco_resistance['upper_bound'],
         mode='lines',
-        name='IC haut',
+        name='<b>IC haut</b>',
         line=dict(color='violet', width=1, dash='dot')
     ))
 
@@ -217,14 +228,27 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         y=alerts['percent_R'],
         mode='markers',
         marker=dict(color='darkred', size=12),
-        name='Alerte',
+        name='<b>Alerte</b>',
         hovertemplate='Alerte!<br>Semaine %{x}<br>% Résistance %{y:.2f}%'
     ))
 
+    # Mise en forme très visible pour Vancomycine
     fig.update_layout(
-        title="Évolution hebdomadaire du % de résistance à la Vancomycine",
-        xaxis_title="Numéro semaine",
-        yaxis_title="% Résistance",
+        title=dict(
+            text="Évolution hebdomadaire du % de résistance à la Vancomycine",
+            font=dict(size=26, family="Arial Black")
+        ),
+        legend=dict(
+            font=dict(size=20, family="Arial Black")
+        ),
+        xaxis=dict(
+            title=dict(text="Numéro semaine", font=dict(size=22, family="Arial Black")),
+            tickfont=dict(size=18, family="Arial Black")
+        ),
+        yaxis=dict(
+            title=dict(text="% Résistance", font=dict(size=22, family="Arial Black")),
+            tickfont=dict(size=18, family="Arial Black")
+        ),
         hovermode="closest"
     )
 
