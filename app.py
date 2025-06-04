@@ -158,7 +158,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             hovertemplate='Alerte Wild type!<br>Semaine %{x}<br>% Wild type %{y:.2f}%'
         ))
 
-    # Mise en forme très visible : titre en gros, axes et légende en gras
+    # Mise à jour du layout pour fixer l'échelle X et allonger la figure
     fig.update_layout(
         title=dict(
             text="Évolution hebdomadaire des % de phénotypes avec moyenne mobile et IC",
@@ -168,6 +168,7 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             font=dict(size=20, family="Arial Black")
         ),
         xaxis=dict(
+            range=[0, 50],  # ← forcer l'échelle des semaines de 0 à 50
             title=dict(text="Numéro semaine", font=dict(size=22, family="Arial Black")),
             tickfont=dict(size=18, family="Arial Black")
         ),
@@ -175,7 +176,8 @@ def plot_phenotypes(df_erv, df_wild, weeks_range, phenotype_choice):
             title=dict(text="% phénotypes", font=dict(size=22, family="Arial Black")),
             tickfont=dict(size=18, family="Arial Black")
         ),
-        hovermode="closest"
+        hovermode="closest",
+        height=600  # ← augmenter la hauteur pour allonger le tracé
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -232,7 +234,7 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
         hovertemplate='Alerte!<br>Semaine %{x}<br>% Résistance %{y:.2f}%'
     ))
 
-    # Mise en forme très visible pour Vancomycine
+    # Mise en forme pour Vancomycine
     fig.update_layout(
         title=dict(
             text="Évolution hebdomadaire du % de résistance à la Vancomycine",
@@ -249,7 +251,8 @@ def plot_vanco_resistance(df_vanco_resistance, weeks_range):
             title=dict(text="% Résistance", font=dict(size=22, family="Arial Black")),
             tickfont=dict(size=18, family="Arial Black")
         ),
-        hovermode="closest"
+        hovermode="closest",
+        height=600
     )
 
     st.plotly_chart(fig, use_container_width=True)
