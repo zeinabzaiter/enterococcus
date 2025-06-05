@@ -92,11 +92,18 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
       - %_Wild_exclu (vert)
       - MA_Wild      (vert, tirets)
       - LB_Wild / UB_Wild (vert clair, pointillés)
+      - Points d'alerte ERV (rouge)
       - Axe X = Semaine
       - Axe Y = % d’isolats (sur l’ensemble ERV+Wild, donc toujours total = 100%)
     Légendes raccourcies, mêmes tailles de police, et axe Y uniquement "%".
     """
     semaines = df['Semaine']
+
+    # Repérer les points d’alerte ERV (hors IC 95%)
+    df_alert_erv = df[
+        (df['%_ERV_exclu'] > df['UB_ERV']) |
+        (df['%_ERV_exclu'] < df['LB_ERV'])
+    ]
 
     fig = go.Figure()
 
@@ -137,6 +144,15 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         line=dict(color='lightblue', width=1, dash='dot'),
         hovertemplate=None
     ))
+    # Points d'alerte ERV (rouge plein)
+    fig.add_trace(go.Scatter(
+        x=df_alert_erv['Semaine'],
+        y=df_alert_erv['%_ERV_exclu'],
+        mode='markers',
+        name='Alerte ERV',
+        marker=dict(color='red', size=12),
+        hovertemplate='ALERTE ERV !<br>Semaine %{x}<br>% ERV %{y:.2f}%<extra></extra>'
+    ))
 
     # % Wild exclusif
     fig.add_trace(go.Scatter(
@@ -176,7 +192,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         hovertemplate=None
     ))
 
-    # Mise en forme du layout, avec TITRE RÉTABLI
+    # Mise en forme du layout, avec titre rétabli
     fig.update_layout(
         title=dict(
             text="Répartition hebdo exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
@@ -219,6 +235,7 @@ def main():
         • `% ERV` + `% Wild` font toujours 100 % chaque semaine,  
         • Moyenne mobile centrée (fenêtre de 8 semaines),  
         • Bornes d’IC 95 %,  
+        • Points d'alerte ERV en rouge lorsque le % ERV sort de l'IC 95 %,  
         • Titres, axes et légendes en **Arial Black**, taille agrandie.  
         """
     )
