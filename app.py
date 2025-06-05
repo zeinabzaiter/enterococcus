@@ -8,143 +8,168 @@ st.set_page_config(page_title="Dashboard ERV vs Wild (Exclusif)", layout="wide")
 @st.cache_data
 def load_raw_data(path: str) -> pd.DataFrame:
     """
-    Charge le fichier brut contenant, pour chaque isolat, les colonnes :
+    Charge le fichier brut contenant, pour chaque isolat, au minimum les colonnes :
       - Numéro semaine  (int)
       - UF              (service)
       - Vancomycine     ('R' ou 'S')
       - Teicoplanine    ('R' ou 'S')
-      - ... (autres colonnes si besoin)
     """
-    df = pd.read_excel(path)
-    return df
+    return pd.read_excel(path)
 
 @st.cache_data
-def compute_weekly_exclusive(df_raw: pd.DataFrame, window_size: int = 8, z_score: float = 1.96) -> pd.DataFrame:
+def compute_weekly_exclusive_and_uf_alerts(
+    df_raw: pd.DataFrame, window_size: int = 8, z_score: float = 1.96
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    À partir du DataFrame brut, on :
-      1. Crée deux colonnes booléennes is_ERV, is_Wild, de façon mutuellement exclusive :
-         - ERV  = Vancomycine == 'R'
-         - Wild = Vancomycine == 'S' AND Teicoplanine == 'S'
-         (tout isolat qui n'est ni ERV ni Wild est filtré)
-      2. Filtre le DataFrame pour ne conserver que les isolats ERV ou Wild.
-      3. Groupe par 'Numéro semaine' pour compter :
-         - total_exclusifs = nombre d'isolats cette semaine (ERV+Wild)
-         - nb_ERV          = nombre d'isolats ERV cette semaine
-         - nb_Wild         = nombre d'isolats Wild cette semaine
-      4. Calcule les pourcentages exclusifs :
-         - %_ERV_exclu  = nb_ERV  / total_exclusifs * 100
-         - %_Wild_exclu = nb_Wild / total_exclusifs * 100
-      5. Calcule la moyenne mobile centrée (window_size) et les bornes d'IC 95% pour chaque série
-    Retourne un DataFrame avec colonnes :
-      ['Semaine', 'total_exclusifs', 'nb_ERV', 'nb_Wild',
-       '%_ERV_exclu', '%_Wild_exclu',
-       'MA_ERV', 'LB_ERV', 'UB_ERV',
-       'MA_Wild', 'LB_Wild', 'UB_Wild']
+    1. On crée deux indicateurs booléens mutuellement exclusifs :
+       - is_ERV  = Vancomycine == 'R'
+       - is_Wild = Vancomycine == 'S' AND Teicoplanine == 'S'
+       On ne garde que ces isolats (ERV ou Wild).
+    2. On agrège par semaine pour obtenir le résumé global (ERV+Wild) :
+       - total_exclusifs, nb_ERV, nb_Wild
+       - calcul des % exclusifs de ERV et Wild
+       - moyenne mobile centrée + IC 95 % (fenêtre = window_size)
+    3. On agrège par (semaine, UF) pour calculer, **pour chaque UF**, le % ERV:
+       - total_uf, nb_ERV_uf → percent_ERV_uf
+       - on calcule la moyenne mobile et IC 95 % **par UF**
+       - on marque alert_uf = True si percent_ERV_uf < LB_uf ou > UB_uf
+    4. On retourne :
+       - résumé : DataFrame hebdo exclusif (colonnes Semaine, total_exclusifs, nb_ERV, nb_Wild,
+                   %_ERV_exclu, %_Wild_exclu, MA_ERV, LB_ERV, UB_ERV, MA_Wild, LB_Wild, UB_Wild)
+       - alerts_uf_df : DataFrame des alertes ERV par UF (colonnes Semaine, UF, percent_ERV_uf)
     """
-    # 1. Ajouter indicateurs ERV / Wild (exclusifs)
     df = df_raw.copy()
     df['is_ERV']  = df['Vancomycine'] == 'R'
     df['is_Wild'] = (df['Vancomycine'] == 'S') & (df['Teicoplanine'] == 'S')
 
-    # 2. Ne conserver que les isolats marqués ERV ou Wild
+    # Filtrer pour ne garder que ERV ou Wild
     df_exclu = df[df['is_ERV'] | df['is_Wild']].copy()
 
-    # 3. Groupe par semaine
-    résumé = df_exclu.groupby('Numéro semaine').agg(
-        total_exclusifs = ('UF',      'count'),
-        nb_ERV          = ('is_ERV',  'sum'),
-        nb_Wild         = ('is_Wild', 'sum')
-    ).reset_index().rename(columns={'Numéro semaine': 'Semaine'})
+    # ----------------------------------------
+    # 1) Calcul du résumé hebdomadaire global
+    # ----------------------------------------
+    résumé = (
+        df_exclu
+        .groupby('Numéro semaine')
+        .agg(
+            total_exclusifs=('UF', 'count'),
+            nb_ERV         =('is_ERV', 'sum'),
+            nb_Wild        =('is_Wild', 'sum')
+        )
+        .reset_index()
+        .rename(columns={'Numéro semaine': 'Semaine'})
+    )
 
-    # 4. Calculer pourcentages exclusifs
-    résumé['%_ERV_exclu']  = résumé['nb_ERV']  / résumé['total_exclusifs'] * 100
-    résumé['%_Wild_exclu'] = résumé['nb_Wild'] / résumé['total_exclusifs'] * 100
-    résumé['%_ERV_exclu']  = résumé['%_ERV_exclu'].round(2)
-    résumé['%_Wild_exclu'] = résumé['%_Wild_exclu'].round(2)
+    résumé['%_ERV_exclu']  = (résumé['nb_ERV']         / résumé['total_exclusifs'] * 100).round(2)
+    résumé['%_Wild_exclu'] = (résumé['nb_Wild']        / résumé['total_exclusifs'] * 100).round(2)
 
-    # 5. Calcul des moyennes mobiles et bornes d'IC 95%
-    # Pour ERV
+    # Moyenne mobile + IC 95 % pour ERV (global)
     résumé['MA_ERV'] = résumé['%_ERV_exclu'].rolling(window=window_size, center=True).mean()
-    std_erv = résumé['%_ERV_exclu'].rolling(window=window_size, center=True).std()
-    margin_erv = z_score * (std_erv / np.sqrt(window_size))
-    résumé['LB_ERV'] = résumé['MA_ERV'] - margin_erv
-    résumé['UB_ERV'] = résumé['MA_ERV'] + margin_erv
+    std_erv         = résumé['%_ERV_exclu'].rolling(window=window_size, center=True).std()
+    margin_erv      = z_score * (std_erv / np.sqrt(window_size))
+    résumé['LB_ERV'] = (résumé['MA_ERV'] - margin_erv).round(2)
+    résumé['UB_ERV'] = (résumé['MA_ERV'] + margin_erv).round(2)
 
-    # Pour Wild
+    # Moyenne mobile + IC 95 % pour Wild (global)
     résumé['MA_Wild'] = résumé['%_Wild_exclu'].rolling(window=window_size, center=True).mean()
-    std_wild = résumé['%_Wild_exclu'].rolling(window=window_size, center=True).std()
-    margin_wild = z_score * (std_wild / np.sqrt(window_size))
-    résumé['LB_Wild'] = résumé['MA_Wild'] - margin_wild
-    résumé['UB_Wild'] = résumé['MA_Wild'] + margin_wild
+    std_wild         = résumé['%_Wild_exclu'].rolling(window=window_size, center=True).std()
+    margin_wild      = z_score * (std_wild / np.sqrt(window_size))
+    résumé['LB_Wild'] = (résumé['MA_Wild'] - margin_wild).round(2)
+    résumé['UB_Wild'] = (résumé['MA_Wild'] + margin_wild).round(2)
 
-    # 6. Arrondir pour plus de lisibilité
-    cols_to_round = ['MA_ERV', 'LB_ERV', 'UB_ERV', 'MA_Wild', 'LB_Wild', 'UB_Wild']
-    résumé[cols_to_round] = résumé[cols_to_round].round(2)
+    # ----------------------------------------
+    # 2) Calcul des alertes ERV par UF
+    # ----------------------------------------
+    # Agréger par semaine+UF pour calculer percent_ERV_uf
+    df_uf = (
+        df_exclu
+        .groupby(['Numéro semaine', 'UF'])
+        .agg(
+            total_uf=('UF',    'count'),
+            nb_ERV_uf=('is_ERV', 'sum')
+        )
+        .reset_index()
+        .rename(columns={'Numéro semaine': 'Semaine'})
+    )
+    df_uf['percent_ERV_uf'] = (df_uf['nb_ERV_uf'] / df_uf['total_uf'] * 100).round(2)
 
-    return résumé
+    # On calcule la moyenne mobile + IC 95 % pour chaque UF séparément
+    df_uf = df_uf.sort_values(['UF', 'Semaine'])
+    def rolling_uf(group):
+        grp = group.copy()
+        grp['MA_ERV_uf'] = grp['percent_ERV_uf'].rolling(window=window_size, center=True).mean()
+        grp['STD_ERV_uf'] = grp['percent_ERV_uf'].rolling(window=window_size, center=True).std()
+        grp['LB_ERV_uf']  = grp['MA_ERV_uf'] - z_score * (grp['STD_ERV_uf'] / np.sqrt(window_size))
+        grp['UB_ERV_uf']  = grp['MA_ERV_uf'] + z_score * (grp['STD_ERV_uf'] / np.sqrt(window_size))
+        # Marquer une alerte si le %_ERV_uf est en dehors des bornes IC
+        grp['alert_uf'] = (grp['percent_ERV_uf'] < grp['LB_ERV_uf']) | (grp['percent_ERV_uf'] > grp['UB_ERV_uf'])
+        return grp
 
-def plot_exclusive_erv_wild(df: pd.DataFrame):
+    df_uf_alerts = df_uf.groupby('UF').apply(rolling_uf).reset_index(drop=True)
+
+    # On récupère uniquement les lignes où alert_uf == True
+    alerts_uf_df = df_uf_alerts[df_uf_alerts['alert_uf']][['Semaine', 'UF', 'percent_ERV_uf']]
+    alerts_uf_df = alerts_uf_df.rename(columns={'percent_ERV_uf': '% ERV (UF)'})
+
+    return résumé, alerts_uf_df
+
+def plot_exclusive_erv_wild_and_show_alerts(
+    df_summary: pd.DataFrame, alerts_uf_df: pd.DataFrame
+):
     """
-    Trace un graphique Plotly avec :
-      - %_ERV_exclu  (bleu)
-      - MA_ERV       (bleu, tirets)
-      - LB_ERV / UB_ERV (bleu clair, pointillés)
-      - %_Wild_exclu (vert)
-      - MA_Wild      (vert, tirets)
-      - LB_Wild / UB_Wild (vert clair, pointillés)
-      - Points d'alerte ERV (rouge)
-      - Axe X = Semaine
-      - Axe Y = % d’isolats (sur l’ensemble ERV+Wild, donc toujours total = 100%)
-    Légendes raccourcies, mêmes tailles de police, et axe Y uniquement "%".
+    1) Trace le graphique global hebdomadaire : % ERV vs % Wild + moyennes et IC
+       Ajoute en rouge les points d'alerte sur % ERV (global).
+    2) Affiche un tableau (Streamlit) des alertes ERV par UF :
+       colonnes : Semaine | UF | % ERV (UF)
     """
-    semaines = df['Semaine']
+    semaines = df_summary['Semaine']
 
-    # Repérer les points d’alerte ERV (hors IC 95%)
-    df_alert_erv = df[
-        (df['%_ERV_exclu'] > df['UB_ERV']) |
-        (df['%_ERV_exclu'] < df['LB_ERV'])
+    # Points d’alerte ERV global (hors IC 95 % globale)
+    df_alert_erv = df_summary[
+        (df_summary['%_ERV_exclu'] > df_summary['UB_ERV']) |
+        (df_summary['%_ERV_exclu'] < df_summary['LB_ERV'])
     ]
 
     fig = go.Figure()
 
-    # % ERV exclusif
+    # % ERV global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['%_ERV_exclu'],
+        y=df_summary['%_ERV_exclu'],
         mode='lines+markers',
         name='% ERV',
         line=dict(color='blue', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%<extra></extra>'
     ))
-    # Moyenne mobile ERV
+    # Moyenne mobile ERV global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['MA_ERV'],
+        y=df_summary['MA_ERV'],
         mode='lines',
         name='Moyenne ERV',
         line=dict(color='blue', width=2, dash='dash'),
         hovertemplate='Semaine %{x}<br>Moyenne ERV %{y:.2f}%<extra></extra>'
     ))
-    # IC bas ERV
+    # IC bas ERV global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['LB_ERV'],
+        y=df_summary['LB_ERV'],
         mode='lines',
         name='IC bas ERV',
         line=dict(color='lightblue', width=1, dash='dot'),
         hovertemplate=None
     ))
-    # IC haut ERV
+    # IC haut ERV global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['UB_ERV'],
+        y=df_summary['UB_ERV'],
         mode='lines',
         name='IC haut ERV',
         line=dict(color='lightblue', width=1, dash='dot'),
         hovertemplate=None
     ))
-    # Points d'alerte ERV (rouge plein)
+    # Points d'alerte ERV global (rouge)
     fig.add_trace(go.Scatter(
         x=df_alert_erv['Semaine'],
         y=df_alert_erv['%_ERV_exclu'],
@@ -154,45 +179,45 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         hovertemplate='ALERTE ERV !<br>Semaine %{x}<br>% ERV %{y:.2f}%<extra></extra>'
     ))
 
-    # % Wild exclusif
+    # % Wild global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['%_Wild_exclu'],
+        y=df_summary['%_Wild_exclu'],
         mode='lines+markers',
         name='% Wild',
         line=dict(color='green', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% Wild %{y:.2f}%<extra></extra>'
     ))
-    # Moyenne mobile Wild
+    # Moyenne mobile Wild global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['MA_Wild'],
+        y=df_summary['MA_Wild'],
         mode='lines',
         name='Moyenne Wild',
         line=dict(color='green', width=2, dash='dash'),
         hovertemplate='Semaine %{x}<br>Moyenne Wild %{y:.2f}%<extra></extra>'
     ))
-    # IC bas Wild
+    # IC bas Wild global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['LB_Wild'],
+        y=df_summary['LB_Wild'],
         mode='lines',
         name='IC bas Wild',
         line=dict(color='lightgreen', width=1, dash='dot'),
         hovertemplate=None
     ))
-    # IC haut Wild
+    # IC haut Wild global
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df['UB_Wild'],
+        y=df_summary['UB_Wild'],
         mode='lines',
         name='IC haut Wild',
         line=dict(color='lightgreen', width=1, dash='dot'),
         hovertemplate=None
     ))
 
-    # Mise en forme du layout, avec titre rétabli
+    # Mise en forme du layout
     fig.update_layout(
         title=dict(
             text="Répartition hebdo exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
@@ -221,7 +246,27 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         height=600
     )
 
+    # Afficher le graphique
     st.plotly_chart(fig, use_container_width=True)
+
+    # -------------------------------------------------------
+    # Afficher le tableau des alertes ERV par UF en-dessous
+    # -------------------------------------------------------
+    st.subheader("🛎️ Alertes ERV par UF (semaine + UF + % ERV)")
+    if alerts_uf_df.empty:
+        st.write("Aucune alerte ERV détectée sur la période.")
+    else:
+        # On trie par semaine croissante puis par UF
+        alerts_sorted = alerts_uf_df.sort_values(['Semaine', 'UF']).reset_index(drop=True)
+        st.dataframe(alerts_sorted, use_container_width=True)
+        # Option pour télécharger ce tableau au format CSV
+        csv_data = alerts_sorted.to_csv(index=False)
+        st.download_button(
+            label="📥 Télécharger les alertes ERV par UF en CSV",
+            data=csv_data,
+            file_name="alertes_ERV_par_UF.csv",
+            mime="text/csv"
+        )
 
 def main():
     st.title("📊 Dashboard exclusif ERV vs Wild")
@@ -243,18 +288,22 @@ def main():
     # 1. Charger le fichier brut des isolats
     df_raw = load_raw_data("Enterococcus_faecium_groupes_antibiotiques.xlsx")
 
-    # 2. Calculer le résumé hebdomadaire exclusif (ERV vs Wild)
-    df_weekly = compute_weekly_exclusive(df_raw, window_size=8, z_score=1.96)
+    # 2. Calculer résumé + alertes UF
+    df_summary, alerts_uf_df = compute_weekly_exclusive_and_uf_alerts(
+        df_raw,
+        window_size=8,
+        z_score=1.96
+    )
 
     # 3. Afficher en sidebar quelques infos
     st.sidebar.header("Infos sur les données")
-    st.sidebar.write(f"Nombre de semaines : {df_weekly.shape[0]}")
-    st.sidebar.write(f"Semaine min : {int(df_weekly['Semaine'].min())}")
-    st.sidebar.write(f"Semaine max : {int(df_weekly['Semaine'].max())}")
-    st.sidebar.write(f"Total maximal d’isolats/semaine : {int(df_weekly['total_exclusifs'].max())}")
+    st.sidebar.write(f"Nombre de semaines : {df_summary.shape[0]}")
+    st.sidebar.write(f"Semaine min : {int(df_summary['Semaine'].min())}")
+    st.sidebar.write(f"Semaine max : {int(df_summary['Semaine'].max())}")
+    st.sidebar.write(f"Total maximal d’isolats/semaine : {int(df_summary['total_exclusifs'].max())}")
 
-    # 4. Tracer le graphique
-    plot_exclusive_erv_wild(df_weekly)
+    # 4. Tracer graphique + tableau alertes
+    plot_exclusive_erv_wild_and_show_alerts(df_summary, alerts_uf_df)
 
 if __name__ == "__main__":
     main()
