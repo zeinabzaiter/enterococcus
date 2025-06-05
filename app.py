@@ -1,84 +1,138 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 
-# --------------------------------------------------------------------------
-# Ce Streamlit app lit le fichier Excel « weekly_with_thresholds.xlsx »
-# (contenant pour chaque semaine : %_ERV, MA_ERV, LB_ERV, UB_ERV,
-#                                     %_Wild, MA_Wild, LB_Wild, UB_Wild)
-# et affiche, sur un seul graphique Plotly, la courbe hebdomadaire de
-# % ERV et % Wild ainsi que leurs moyennes mobiles et bornes d’IC.
-# --------------------------------------------------------------------------
-
-st.set_page_config(page_title="Dashboard ERV vs Wild", layout="wide")
+st.set_page_config(page_title="Dashboard ERV vs Wild (Exclusif)", layout="wide")
 
 @st.cache_data
-def load_weekly_data(path: str) -> pd.DataFrame:
+def load_raw_data(path: str) -> pd.DataFrame:
     """
-    Charge le fichier Excel contenant les colonnes suivantes, par ordre :
-      - Semaine               (int)
-      - total_isolats         (int)
-      - nb_ERV                (int)
-      - nb_Wild               (int)
-      - %_ERV                 (float)
-      - %_Wild                (float)
-      - MA_ERV                (float)
-      - LB_ERV                (float)
-      - UB_ERV                (float)
-      - MA_Wild               (float)
-      - LB_Wild               (float)
-      - UB_Wild               (float)
+    Charge le fichier brut contenant, pour chaque isolat, les colonnes :
+      - Numéro semaine  (int)
+      - UF              (service)
+      - Vancomycine     ('R' ou 'S')
+      - Teicoplanine    ('R' ou 'S')
+      - ... (autres colonnes si besoin)
     """
     df = pd.read_excel(path)
     return df
 
-def plot_erv_wild_with_thresholds(df: pd.DataFrame):
+@st.cache_data
+def compute_weekly_exclusive(df_raw: pd.DataFrame, window_size: int = 8, z_score: float = 1.96) -> pd.DataFrame:
     """
-    Construit un graphique Plotly où :
-      - l'axe X (Numéro semaine) va de min(df['Semaine']) à max(df['Semaine'])
-      - l'axe Y affiche les pourcentages pour ERV et Wild, avec :
-          • %_ERV en bleu (courbe pleine + marqueurs)
-          • Moyenne mobile ERV en bleu (trait en tirets)
-          • Bornes IC bas/haut ERV en bleu clair (traits pointillés)
-          • %_Wild en vert (courbe pleine + marqueurs)
-          • Moyenne mobile Wild en vert (trait en tirets)
-          • Bornes IC bas/haut Wild en vert clair (traits pointillés)
-      - les libellés (titres, légende, axes) sont très visibles (Arial Black, polices agrandies)
+    À partir du DataFrame brut, on :
+      1. Crée deux colonnes booléennes is_ERV, is_Wild, de façon mutuellement exclusive :
+         - ERV  = Vancomycine == 'R'
+         - Wild = Vancomycine == 'S' AND Teicoplanine == 'S'
+         (tout isolat qui n'est ni ERV ni Wild est filtré)
+      2. Filtre le DataFrame pour ne conserver que les isolats ERV ou Wild.
+      3. Grouper par 'Numéro semaine' pour compter :
+         - total_exclusifs = nombre d'isolats cette semaine (ERV+Wild)
+         - nb_ERV          = nombre d'isolats ERV cette semaine
+         - nb_Wild         = nombre d'isolats Wild cette semaine
+      4. Calcule les pourcentages exclusifs :
+         - %_ERV_exclu  = nb_ERV  / total_exclusifs * 100
+         - %_Wild_exclu = nb_Wild / total_exclusifs * 100
+      5. Calcule la moyenne mobile centrée (window_size) et les bornes d'IC 95% pour chaque série
+    Retourne un DataFrame avec colonnes :
+      ['Semaine', 'total_exclusifs', 'nb_ERV', 'nb_Wild',
+       '%_ERV_exclu', '%_Wild_exclu',
+       'MA_ERV', 'LB_ERV', 'UB_ERV',
+       'MA_Wild', 'LB_Wild', 'UB_Wild']
     """
-    semaines = df["Semaine"]
+    # 1. Ajouter indicateurs ERV / Wild (exclusifs)
+    df = df_raw.copy()
+    df['is_ERV']  = df['Vancomycine'] == 'R'
+    df['is_Wild'] = (df['Vancomycine'] == 'S') & (df['Teicoplanine'] == 'S')
+
+    # 2. Ne conserver que les isolats marqués ERV ou Wild
+    df_exclu = df[df['is_ERV'] | df['is_Wild']].copy()
+
+    # 3. Grouper par semaine
+    résumé = df_exclu.groupby('Numéro semaine').agg(
+        total_exclusifs = ('UF',      'count'),
+        nb_ERV          = ('is_ERV',  'sum'),
+        nb_Wild         = ('is_Wild', 'sum')
+    ).reset_index().rename(columns={'Numéro semaine': 'Semaine'})
+
+    # 4. Calculer pourcentages exclusifs
+    résumé['%_ERV_exclu']  = résumé['nb_ERV']  / résumé['total_exclusifs'] * 100
+    résumé['%_Wild_exclu'] = résumé['nb_Wild'] / résumé['total_exclusifs'] * 100
+    résumé['%_ERV_exclu']  = résumé['%_ERV_exclu'].round(2)
+    résumé['%_Wild_exclu'] = résumé['%_Wild_exclu'].round(2)
+
+    # 5. Calcul des moyennes mobiles et bornes d'IC 95%
+    # Pour ERV
+    résumé['MA_ERV'] = résumé['%_ERV_exclu'].rolling(window=window_size, center=True).mean()
+    std_erv = résumé['%_ERV_exclu'].rolling(window=window_size, center=True).std()
+    margin_erv = z_score * (std_erv / np.sqrt(window_size))
+    résumé['LB_ERV'] = résumé['MA_ERV'] - margin_erv
+    résumé['UB_ERV'] = résumé['MA_ERV'] + margin_erv
+
+    # Pour Wild
+    résumé['MA_Wild'] = résumé['%_Wild_exclu'].rolling(window=window_size, center=True).mean()
+    std_wild = résumé['%_Wild_exclu'].rolling(window=window_size, center=True).std()
+    margin_wild = z_score * (std_wild / np.sqrt(window_size))
+    résumé['LB_Wild'] = résumé['MA_Wild'] - margin_wild
+    résumé['UB_Wild'] = résumé['MA_Wild'] + margin_wild
+
+    # 6. Arrondir pour plus de lisibilité
+    cols_to_round = ['MA_ERV', 'LB_ERV', 'UB_ERV', 'MA_Wild', 'LB_Wild', 'UB_Wild']
+    résumé[cols_to_round] = résumé[cols_to_round].round(2)
+
+    return résumé
+
+def plot_exclusive_erv_wild(df: pd.DataFrame):
+    """
+    Trace un graphique Plotly avec :
+      - %_ERV_exclu  (bleu)
+      - MA_ERV       (bleu, tirets)
+      - LB_ERV / UB_ERV (bleu clair, pointillés)
+      - %_Wild_exclu (vert)
+      - MA_Wild      (vert, tirets)
+      - LB_Wild / UB_Wild (vert clair, pointillés)
+      - Axe X = Semaine
+      - Axe Y = % d’isolats (sur l’ensemble ERV+Wild, donc toujours total = 100%)
+    Les textes (titre, axes, légende) sont en Arial Black, taille agrandie.
+    """
+    semaines = df['Semaine']
 
     fig = go.Figure()
 
-    # -- Traces pour ERV --
+    # % ERV exclusif
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["%_ERV"],
+        y=df['%_ERV_exclu'],
         mode='lines+markers',
         name='<b>% ERV</b>',
         line=dict(color='blue', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%<extra></extra>'
     ))
+    # Moyenne mobile ERV
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["MA_ERV"],
+        y=df['MA_ERV'],
         mode='lines',
         name='<b>Moyenne mobile ERV</b>',
         line=dict(color='blue', width=2, dash='dash'),
         hovertemplate='Semaine %{x}<br>Moyenne mobile ERV %{y:.2f}%<extra></extra>'
     ))
+    # IC bas ERV
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["LB_ERV"],
+        y=df['LB_ERV'],
         mode='lines',
         name='<b>IC bas ERV</b>',
         line=dict(color='lightblue', width=1, dash='dot'),
         hovertemplate=None,
         showlegend=True
     ))
+    # IC haut ERV
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["UB_ERV"],
+        y=df['UB_ERV'],
         mode='lines',
         name='<b>IC haut ERV</b>',
         line=dict(color='lightblue', width=1, dash='dot'),
@@ -86,36 +140,39 @@ def plot_erv_wild_with_thresholds(df: pd.DataFrame):
         showlegend=True
     ))
 
-    # -- Traces pour Wild type --
+    # % Wild exclusif
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["%_Wild"],
+        y=df['%_Wild_exclu'],
         mode='lines+markers',
-        name='<b>% Wild type</b>',
+        name='<b>% Wild</b>',
         line=dict(color='green', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% Wild %{y:.2f}%<extra></extra>'
     ))
+    # Moyenne mobile Wild
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["MA_Wild"],
+        y=df['MA_Wild'],
         mode='lines',
         name='<b>Moyenne mobile Wild</b>',
         line=dict(color='green', width=2, dash='dash'),
         hovertemplate='Semaine %{x}<br>Moyenne mobile Wild %{y:.2f}%<extra></extra>'
     ))
+    # IC bas Wild
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["LB_Wild"],
+        y=df['LB_Wild'],
         mode='lines',
         name='<b>IC bas Wild</b>',
         line=dict(color='lightgreen', width=1, dash='dot'),
         hovertemplate=None,
         showlegend=True
     ))
+    # IC haut Wild
     fig.add_trace(go.Scatter(
         x=semaines,
-        y=df["UB_Wild"],
+        y=df['UB_Wild'],
         mode='lines',
         name='<b>IC haut Wild</b>',
         line=dict(color='lightgreen', width=1, dash='dot'),
@@ -123,10 +180,10 @@ def plot_erv_wild_with_thresholds(df: pd.DataFrame):
         showlegend=True
     ))
 
-    # -- Mise à jour du layout pour avoir des textes très visibles --
+    # Mise en forme très visible
     fig.update_layout(
         title=dict(
-            text="Évolution hebdomadaire : % ERV vs % Wild avec seuils",
+            text="Répartition hebdomadaire exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
             font=dict(size=26, family="Arial Black")
         ),
         legend=dict(
@@ -143,9 +200,9 @@ def plot_erv_wild_with_thresholds(df: pd.DataFrame):
             range=[semaines.min(), semaines.max()]
         ),
         yaxis=dict(
-            title=dict(text="% d’isolats", font=dict(size=22, family="Arial Black")),
+            title=dict(text="% d’isolats (ERV + Wild → 100 %)", font=dict(size=22, family="Arial Black")),
             tickfont=dict(size=18, family="Arial Black"),
-            rangemode="tozero"
+            range=[0, 100]
         ),
         hovermode="x unified",
         margin=dict(l=60, r=40, t=100, b=60),
@@ -155,40 +212,36 @@ def plot_erv_wild_with_thresholds(df: pd.DataFrame):
     st.plotly_chart(fig, use_container_width=True)
 
 def main():
-    st.title("📊 Dashboard hebdomadaire : ERV vs Wild")
+    st.title("📊 Dashboard exclusif ERV vs Wild")
 
     st.markdown(
         """
-        Ce dashboard affiche, pour chaque semaine, le pourcentage d’isolats Enterococcus faecium :
-        - **% ERV** (résistants à la vancomycine)  
-        - **% Wild type** (sensibles à la vancomycine *et* à la téicoplanine)  
+        Ce dashboard regroupe chaque semaine uniquement les isolats **ERV** (Vancomycine = R) 
+        et les isolats **Wild type** (Vancomycine = S et Teicoplanine = S).  
+        On exclut les autres combinaisons (par ex. Vancomycine S + Teicoplanine R).  
 
-        Pour chaque série, on superpose :
-        1. La courbe principale (% ERV / % Wild)  
-        2. La moyenne mobile centrée (fenêtre 8)  
-        3. Les bornes d’intervalle de confiance à 95 % (IC bas / IC haut).  
+        • `% ERV` + `% Wild` font toujours 100 % chaque semaine,  
+        • Moyenne mobile centrée (fenêtre de 8 semaines) en trait pointillé,  
+        • Bornes d’IC 95 % en pointillés légers,  
+        • Titres, axes et légendes en **Arial Black**, taille agrandie.  
         """
     )
 
-    # Charge le DataFrame pré-calculé
-    df_weekly = load_weekly_data("weekly_with_thresholds.xlsx")
+    # 1. Charger le fichier brut des isolats
+    df_raw = load_raw_data("Enterococcus_faecium_groupes_antibiotiques.xlsx")
 
-    # Feuille d’information rapide
-    st.sidebar.header("Infos données")
+    # 2. Calculer le résumé hebdomadaire exclusif (ERV vs Wild)
+    df_weekly = compute_weekly_exclusive(df_raw, window_size=8, z_score=1.96)
+
+    # 3. Afficher en sidebar quelques infos
+    st.sidebar.header("Infos sur les données")
     st.sidebar.write(f"Nombre de semaines : {df_weekly.shape[0]}")
     st.sidebar.write(f"Semaine min : {int(df_weekly['Semaine'].min())}")
     st.sidebar.write(f"Semaine max : {int(df_weekly['Semaine'].max())}")
+    st.sidebar.write(f"Total maximal d’isolats/semaine : {int(df_weekly['total_exclusifs'].max())}")
 
-    # Affiche le graphique principal
-    plot_erv_wild_with_thresholds(df_weekly)
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(
-        "⚠️ **Vérifiez** que le fichier `weekly_with_thresholds.xlsx` "
-        "est présent dans le même dossier que `app.py`.\n\n"
-        "Si vous n’avez que `weekly_summary.xlsx`, exécutez d’abord le script "
-        "de calcul des seuils (moyenne mobile + IC) pour générer `weekly_with_thresholds.xlsx`."
-    )
+    # 4. Tracer le graphique
+    plot_exclusive_erv_wild(df_weekly)
 
 if __name__ == "__main__":
     main()
