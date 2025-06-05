@@ -27,7 +27,7 @@ def compute_weekly_exclusive(df_raw: pd.DataFrame, window_size: int = 8, z_score
          - Wild = Vancomycine == 'S' AND Teicoplanine == 'S'
          (tout isolat qui n'est ni ERV ni Wild est filtré)
       2. Filtre le DataFrame pour ne conserver que les isolats ERV ou Wild.
-      3. Grouper par 'Numéro semaine' pour compter :
+      3. Groupe par 'Numéro semaine' pour compter :
          - total_exclusifs = nombre d'isolats cette semaine (ERV+Wild)
          - nb_ERV          = nombre d'isolats ERV cette semaine
          - nb_Wild         = nombre d'isolats Wild cette semaine
@@ -49,7 +49,7 @@ def compute_weekly_exclusive(df_raw: pd.DataFrame, window_size: int = 8, z_score
     # 2. Ne conserver que les isolats marqués ERV ou Wild
     df_exclu = df[df['is_ERV'] | df['is_Wild']].copy()
 
-    # 3. Grouper par semaine
+    # 3. Groupe par semaine
     résumé = df_exclu.groupby('Numéro semaine').agg(
         total_exclusifs = ('UF',      'count'),
         nb_ERV          = ('is_ERV',  'sum'),
@@ -94,7 +94,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
       - LB_Wild / UB_Wild (vert clair, pointillés)
       - Axe X = Semaine
       - Axe Y = % d’isolats (sur l’ensemble ERV+Wild, donc toujours total = 100%)
-    Les textes (titre, axes, légende) sont en Arial Black, taille agrandie.
+    Légendes raccourcies, mêmes tailles de police, et axe Y uniquement "%".
     """
     semaines = df['Semaine']
 
@@ -105,7 +105,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         x=semaines,
         y=df['%_ERV_exclu'],
         mode='lines+markers',
-        name='<b>% ERV</b>',
+        name='% ERV',
         line=dict(color='blue', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% ERV %{y:.2f}%<extra></extra>'
@@ -115,29 +115,27 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         x=semaines,
         y=df['MA_ERV'],
         mode='lines',
-        name='<b>Moyenne mobile ERV</b>',
+        name='Moyenne ERV',
         line=dict(color='blue', width=2, dash='dash'),
-        hovertemplate='Semaine %{x}<br>Moyenne mobile ERV %{y:.2f}%<extra></extra>'
+        hovertemplate='Semaine %{x}<br>Moyenne ERV %{y:.2f}%<extra></extra>'
     ))
     # IC bas ERV
     fig.add_trace(go.Scatter(
         x=semaines,
         y=df['LB_ERV'],
         mode='lines',
-        name='<b>IC bas ERV</b>',
+        name='IC bas ERV',
         line=dict(color='lightblue', width=1, dash='dot'),
-        hovertemplate=None,
-        showlegend=True
+        hovertemplate=None
     ))
     # IC haut ERV
     fig.add_trace(go.Scatter(
         x=semaines,
         y=df['UB_ERV'],
         mode='lines',
-        name='<b>IC haut ERV</b>',
+        name='IC haut ERV',
         line=dict(color='lightblue', width=1, dash='dot'),
-        hovertemplate=None,
-        showlegend=True
+        hovertemplate=None
     ))
 
     # % Wild exclusif
@@ -145,7 +143,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         x=semaines,
         y=df['%_Wild_exclu'],
         mode='lines+markers',
-        name='<b>% Wild</b>',
+        name='% Wild',
         line=dict(color='green', width=3),
         marker=dict(size=8),
         hovertemplate='Semaine %{x}<br>% Wild %{y:.2f}%<extra></extra>'
@@ -155,39 +153,37 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         x=semaines,
         y=df['MA_Wild'],
         mode='lines',
-        name='<b>Moyenne mobile Wild</b>',
+        name='Moyenne Wild',
         line=dict(color='green', width=2, dash='dash'),
-        hovertemplate='Semaine %{x}<br>Moyenne mobile Wild %{y:.2f}%<extra></extra>'
+        hovertemplate='Semaine %{x}<br>Moyenne Wild %{y:.2f}%<extra></extra>'
     ))
     # IC bas Wild
     fig.add_trace(go.Scatter(
         x=semaines,
         y=df['LB_Wild'],
         mode='lines',
-        name='<b>IC bas Wild</b>',
+        name='IC bas Wild',
         line=dict(color='lightgreen', width=1, dash='dot'),
-        hovertemplate=None,
-        showlegend=True
+        hovertemplate=None
     ))
     # IC haut Wild
     fig.add_trace(go.Scatter(
         x=semaines,
         y=df['UB_Wild'],
         mode='lines',
-        name='<b>IC haut Wild</b>',
+        name='IC haut Wild',
         line=dict(color='lightgreen', width=1, dash='dot'),
-        hovertemplate=None,
-        showlegend=True
+        hovertemplate=None
     ))
 
-    # Mise en forme très visible
+    # Mise en forme du layout
     fig.update_layout(
         title=dict(
-            text="Répartition hebdomadaire exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
+            text="Répartition hebdo exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
             font=dict(size=26, family="Arial Black")
         ),
         legend=dict(
-            font=dict(size=20, family="Arial Black"),
+            font=dict(size=18, family="Arial Black"),
             orientation="h",
             yanchor="bottom",
             y=1.02,
@@ -200,7 +196,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
             range=[semaines.min(), semaines.max()]
         ),
         yaxis=dict(
-            title=dict(text="% d’isolats (ERV + Wild → 100 %)", font=dict(size=22, family="Arial Black")),
+            title=dict(text="%", font=dict(size=22, family="Arial Black")),
             tickfont=dict(size=18, family="Arial Black"),
             range=[0, 100]
         ),
@@ -218,11 +214,11 @@ def main():
         """
         Ce dashboard regroupe chaque semaine uniquement les isolats **ERV** (Vancomycine = R) 
         et les isolats **Wild type** (Vancomycine = S et Teicoplanine = S).  
-        On exclut les autres combinaisons (par ex. Vancomycine S + Teicoplanine R).  
+        Tout isolat qui n'est ni ERV ni Wild est exclu.  
 
         • `% ERV` + `% Wild` font toujours 100 % chaque semaine,  
-        • Moyenne mobile centrée (fenêtre de 8 semaines) en trait pointillé,  
-        • Bornes d’IC 95 % en pointillés légers,  
+        • Moyenne mobile centrée (fenêtre de 8 semaines),  
+        • Bornes d’IC 95 %,  
         • Titres, axes et légendes en **Arial Black**, taille agrandie.  
         """
     )
