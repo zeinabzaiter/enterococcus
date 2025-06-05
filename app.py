@@ -176,12 +176,9 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
         hovertemplate=None
     ))
 
-    # Mise en forme du layout
+    # Mise en forme du layout (titre supprimé)
     fig.update_layout(
-        title=dict(
-            text="Répartition hebdo exclusive : % ERV vs % Wild (fenêtre 8, IC 95 %)",
-            font=dict(size=26, family="Arial Black")
-        ),
+        title=None,
         legend=dict(
             font=dict(size=18, family="Arial Black"),
             orientation="h",
@@ -201,7 +198,7 @@ def plot_exclusive_erv_wild(df: pd.DataFrame):
             range=[0, 100]
         ),
         hovermode="x unified",
-        margin=dict(l=60, r=40, t=100, b=60),
+        margin=dict(l=60, r=40, t=40, b=60),
         height=600
     )
 
